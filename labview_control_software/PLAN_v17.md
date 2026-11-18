@@ -263,8 +263,29 @@ a mano durante la rampa: no tienen mantenimiento, descarga ni retorno.
 - El mismo día el laboratorio retiró de la carpeta la v16, `PID.c`, `ParamPID.c` y `TIME.vi`
   (siguen en el historial de git, commit 430d23c). `pruebas/arnes_v17.js` lee `PID.c` y
   `ParamPID.c`: hay que recuperarlos para volver a ejecutarlo.
-- **Siguiente paso (laboratorio):** la puesta en marcha (guía §8), con alguien junto a la seta y
-  sin probeta; después repetir las capturas P1 a P4 y compararlas con `results/referencia_v18/`.
+- **Puesta en marcha y capturas hechas el 2026-11-18** (`results/v17/`: capturas de pantalla
+  `a`–`e` de los pasos de la guía §8 y `prueba P1`–`P4`, control y QuantumX):
+
+  | | Maniobra | v17 | Referencia v16 (§5) |
+  |---|---|---|---|
+  | P1 | 50 → 61,5 mm a 30 mm/min, 3 s, descarga y retorno | 30,03 mm/min (reloj del QuantumX); error máx 0,042 mm en el arranque, después rms 0,0022 mm; primer paso `u` = −0,248 V | 30,03; 0,032; 0,0019; primer paso 0,000 V |
+  | P2 | 50 → 52,3 mm a 1,5 mm/min | 1,501 mm/min; error máx 0,0036 mm, rms 0,0008 mm | 1,500; 0,0074; 0,0008 |
+  | P3 | 10 mm/min y PARO a los 35,7 s | estado 5, causa 4, `u` = −0,500 V durante 18,8 s; el vástago sube a 4,9 mm/min (null del día ≈ −0,24 V); al reanudar, `u` = +0,31 V durante ~0,1 s y +0,019 mm | −0,500 V durante 25,8 s; 2,9 mm/min; +0,03 V y +0,011 mm |
+  | P4 | fuerza 0,5 → 20 kN a 10 kN/min contra la viga, 30 s, descarga y retorno | 9,99 kN/min; error rms 0,048 kN (rampa) y 0,019 kN (mantenimiento); pico 20,07 kN; descarga 38,9 kN/min; rigidez 13,5–13,9 kN/mm | 9,91; 0,088; 0,024; 20,06; 38,6; 13,2–13,6 |
+
+  - **Registro:** una fila cada 20 ms exactos, solo con ensayo en curso, sin ningún hueco (la
+    referencia tenía de 1 a 34 pasos de más de 30 ms por captura). La columna `dt` es ahora la
+    nominal; el tiempo real se comprueba con el QuantumX. El panel marca 20–22 ms.
+  - **Pasos a–e:** bomba apagada con «BOMBA DETENIDA» sin falla; aproximación a 50 mm/min sin
+    tirón; PARO del panel con la bomba en marcha: bomba apagada y vástago subiendo.
+  - **Por confirmar:** la seta física (en la captura `b` está pulsado el PARO del panel), que la
+    VI termina sola con Stop y `ao0` queda en −0,5 V, y el indicador `Estado de filtro`,
+    encendido en todas las capturas.
+  - **Para la fase 5:** (1) tras un PARO a media rampa el integrador congelado guarda el comando
+    de la rampa, no el null: al reanudar hay un salto proporcional a la velocidad; (2) en
+    rampas rápidas de extensión el arranque desde el null tarda más que desde 0 V (0,042 frente
+    a 0,032 mm a 30 mm/min); (3) `Fp` queda 0,8–1,4 kN por debajo de la celda: los ceros de
+    presión derivaron (bomba apagada: −0,17 / +0,46 bar).
 - `docs/vi_v16_2026-11-12/` (sin versionar): diagrama completo de la v16, panel, los 16 marcos
   ocultos, mosaicos legibles y todos los textos. Sirve de guía para recablear.
 - Lectura del lazo digital de la v16: `ok` = DI0 y no Stop; reset = no `ok`, o Apagar, o PARO;
