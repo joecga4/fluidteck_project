@@ -50,11 +50,11 @@ las lecturas directas del panel dentro del lazo de máquina.
 
 | Nodo | Archivo | Entradas | Salidas |
 |---|---|---|---|
-| ENTRADAS | `Entradas.c` | `V` (2D, 4 × N voltios) | `M` |
-| UPH | `Uph.c` | `D` (8 DI como 0/1), `C`, `Gp` (su salida anterior) | `O` (8 DO como 0/1), `G` |
-| PID | `Pid.c` | `M`, `G`, `C`, `S`, `tr` (reloj del PC, solo diagnóstico) | `u`, `So`, `E` |
+| ENTRADAS | `v17/Entradas.c` | `V` (2D, 4 × N voltios) | `M` |
+| UPH | `v17/Uph.c` | `D` (8 DI como 0/1), `C`, `Gp` (su salida anterior) | `O` (8 DO como 0/1), `G` |
+| PID | `v17/Pid.c` | `M`, `G`, `C`, `S`, `tr` (reloj del PC, solo diagnóstico) | `u`, `So`, `E` |
 
-`Pid.c` absorbe a `ParamPID.c` (código de acceso y ganancias llegan en `C`) y las realimentaciones
+Los textos van en la subcarpeta `v17/` (Windows no distingue `Pid.c` de `PID.c`). `Pid.c` absorbe a `ParamPID.c` (código de acceso y ganancias llegan en `C`) y las realimentaciones
 `st`, `f0`, `ts` e `ini` (pasan a `S`).
 
 ### M — medidas (ENTRADAS → PID)
@@ -78,6 +78,7 @@ las lecturas directas del panel dentro del lazo de máquina.
 | 4 | filtro | DI2 (1 = limpio) |
 | 5 | guardamotor | DI5 (1 = disparado o apagado) |
 | 6 | salir | petición de cierre ordenado (botón Stop) |
+| 7 | pasos sin confirmar | pasos seguidos con orden de bomba y sin DI7; a los 100 (2 s) se retira la orden |
 
 `O` (DO): `O[0]` = orden de bomba, `O[2]` = seta pulsada o salida (como hoy «salida contactor2»),
 `O[5]` = 1 (alimentación de los transductores), resto 0.
@@ -117,8 +118,8 @@ Los 15 primeros son el `Lg` actual, en el mismo orden (los CSV de control siguen
 | 12 | pa [bar] | 26 | dt medido con el reloj del PC [s] |
 | 13 | pb [bar] | 27 | modo |
 
-`S` (estado del PID): los 12 actuales + `st`, `f0`, `ts`, `ini` anterior, `t` del ensayo y `tr`
-anterior. Se fija al escribir `Pid.c`.
+`S` (estado del PID, 17): los 12 actuales (el 5 pasa a ser `tr` anterior) + 12 `st`, 13 `f0`,
+14 `ts`, 15 `ini` anterior, 16 `t` del ensayo.
 
 ---
 
@@ -133,9 +134,15 @@ anterior. Se fija al escribir `Pid.c`.
 5. Posición o fuerza inválidas se tratan como hoy el NaN; presión inválida es un aviso (mientras
    el corte por presiones siga desactivado).
 6. El registro deja de escribir a disco dentro del lazo de control.
+7. **Arranque sin salto** (aceptado el 2026-11-13): el integrador ya no se pone a cero al iniciar
+   un ensayo, al cambiar el tipo de control ni en el PARO; en paro o con la bomba detenida queda
+   congelado. El comando arranca en el null aprendido en vez de pasar por 0 V.
+8. **Bomba que no confirma** (aceptado el 2026-11-13): si hay orden de bomba y DI7 no confirma
+   la marcha durante 2 s, `Uph.c` retira la orden; hay que pulsar Encender de nuevo.
 
 Todo lo demás (máquina de estados del ensayo, cascada fuerza → posición, protecciones, constantes)
-debe salir **idéntico** a `PID.c` v18: se comprueba con la prueba diferencial.
+debe salir **idéntico** a `PID.c` v18: se comprueba con la prueba diferencial (contra la v18 con
+el punto 7 aplicado, que es el único cambio del cuerpo del controlador).
 
 ---
 
@@ -147,18 +154,29 @@ cerrado se lee el diagrama y se compara el texto pegado → se repiten las captu
 ### Fase 0 — Base de pruebas y referencia (no toca ninguna VI)
 - [x] Arnés permanente `pruebas/arnes_pid.js` (prueba diferencial y trayectos con planta sencilla).
 - [x] `pruebas/comprueba_vi.ps1`: compara el texto de los Formula Node de una `.vi` con los `.c`.
-- [ ] Capturas de referencia en la prensa con la v16 + `PID.c` v18 (§5). Son además la primera
-      prueba de la v18 en el equipo.
+- [x] Capturas de referencia en la prensa con la v16 + `PID.c` v18 (§5), 2026-11-13: la v18 queda
+      probada en el equipo.
 - [ ] Simulación en lazo cerrado: los `.c` contra el modelo Simulink de la planta.
 
 ### Fase 1 — Textos del lazo de máquina
-- [ ] `Entradas.c`, `Uph.c`, `Pid.c` con las interfaces de §2.
-- [ ] `Pid.c` idéntico a `PID.c` v18 con seta = 1 y bomba = 1 (prueba diferencial con adaptador).
-- [ ] Mutantes detectados; trayectos: arranque de bomba con consigna distinta, seta en ensayo,
-      bomba que se detiene en ensayo, sensor inválido.
+- [x] `v17/Entradas.c`, `v17/Uph.c`, `v17/Pid.c` con las interfaces de §2 (2026-11-13).
+- [x] `Pid.c` idéntico a `PID.c` v18 + `ParamPID.c` con seta = 1 y bomba en marcha: 800 000 pasos
+      (con y sin corte por presiones), 0 diferencias. Seta pulsada ≡ PARO. Bomba detenida: comando
+      seguro y seguimiento; FALLA 6 si había ensayo, aviso 6 si no.
+- [x] `Uph.c`: las 1024 combinaciones frente a la lógica cableada de la v16; solo cambia el caso
+      Encender + apagado en el mismo paso (240 combinaciones: ahora manda el apagado).
+- [x] `Entradas.c`: 20 000 casos frente a un cálculo independiente; validez y avisos.
+- [x] 20 de 20 mutantes detectados. Trayectos con la cadena completa: los dos ensayos normales
+      salen iguales a la v16 (diferencia < 1e-11); con ENCENDER y la consigna a 7 mm, la v16 tiene
+      la válvula a +10 V y arranca a 3.6 mm/s, la v17 parte de −0.5 V y sigue la rampa de
+      aproximación (máx 1.2 mm/s).
+      Todo se repite con `cscript //nologo pruebas\arnes_v17.js todo`.
+- [x] Propuestas de §8 aceptadas, aplicadas y verificadas (2026-11-13): 800 000 pasos sin
+      diferencias fuera de lo esperado, 26 de 26 mutantes; el comando en el primer paso de un
+      ensayo pasa de «null → 0 V» a «null → null».
 
 ### Fase 2 — Diagrama v17: máquina + interfaz mínima + registro de control
-- [ ] Copia de la v16 como v17 conservando el panel; diagrama nuevo: arranque, lazo de máquina,
+- [ ] **Guía paso a paso: `v17/GUIA_FASE2.md`.** Copia de la v16 como v17 conservando el panel; diagrama nuevo: arranque, lazo de máquina,
       cierre, lazo de interfaz (un Build Array hacia `C`, un Index Array desde `E`), registro de `E`.
 - [ ] Medir el tiempo por iteración con DI/DO dentro del lazo (objetivo: 20 ms sin atrasos; si
       pesa, DI/DO cada 5 iteraciones).
@@ -193,6 +211,35 @@ Sin probeta salvo R4. Alguien junto a la seta. Bomba en marcha ≥ 3 min. Guarda
 | R4 | Ensayo de fuerza contra la viga de acero: 20 kN, 60 kN/min, 10 s | cascada de fuerza, rigidez estimada, descarga |
 | R5 | Anotar «time/iteration (ms)» en reposo y en ensayo | debe estar en ~20 ms (el panel tiene guardado 210) |
 
+### Resultados de referencia (2026-11-13, v16 + `PID.c` v18; archivos en `results/referencia_v18/`)
+
+Los `prueba Pn_control.csv` son el `Lg` (15 columnas, 50 filas/s, solo con ensayo en curso); los
+`prueba Pn.csv` son el QuantumX. P1 contiene dos ensayos seguidos (uno a 0.1 mm/min de 15 s y el
+de 30 mm/min) y le faltan la cabecera y los primeros 53 s del QuantumX. P1, P2 y P3 se detuvieron
+a mano durante la rampa: no tienen mantenimiento, descarga ni retorno.
+
+| | Maniobra real | Resultado |
+|---|---|---|
+| P1 | posición 50 → 61.5 mm a 30 mm/min | velocidad 30.00 mm/min; error consigna − posición rms 0.001 mm (máx 0.032 mm en el arranque); u ≈ +0.94 V |
+| P2 | posición 50 → 52.3 mm a 1.5 mm/min | velocidad 1.50 mm/min; error rms 0.0008 mm, máx 0.007 mm; u ≈ −0.22 V |
+| P3 | posición a 10 mm/min y PARO en t = 34.5 s | estado 5, causa 4, **u = −0.500 V exactos** durante 25.8 s; el vástago sube a 3.4 mm/min (2.5 al caer la presión, porque el PARO apaga la bomba: 34.5 → 24 bar); al soltar, u pasa a +0.03 V y vuelve al null en ~1 s con un movimiento de 0.01 mm |
+| P4 | fuerza 0.5 → 20 kN a 10 kN/min contra la viga, 30 s, descarga y retorno | rampa 9.91 kN/min; error consigna − fuerza rms 0.09 kN (rampa) y 0.02 kN (mantenimiento); pico 20.06 kN; descarga a 38.9 kN/min; rigidez estimada 13.2–13.6 kN/mm |
+| P5 | tiempo por iteración leído en el panel | 19–21 ms |
+
+- **Tiempos del lazo** (columna dt): mediana 20.05 ms; p99 22 ms (30 ms en P3); máximos de
+  38–73 ms; pasos de más de 25 ms: 0.05 %–1.4 %. Es la referencia para comparar al sacar el
+  registro del lazo de control.
+- **Presiones** (cierra el pendiente de comprobar `Lg[12..14]`): en reposo 34.0 / 45.4 bar; la
+  fuerza por presiones coincide con la celda a ±0.3 kN en carga y mantenimiento, y queda 1.7 kN
+  por debajo durante la descarga (rozamiento al invertir el sentido).
+- **Null del día:** −0.35 V al empezar y −0.29 V tres minutos después; −0.26 V sosteniendo 20 kN.
+  Con −0.5 V el margen sobre el null fue de 0.15–0.24 V.
+- **Hallazgo:** en el primer paso de cada ensayo el comando vale **0.000 V** (el reinicio pone
+  `integ = 0`), es decir, salta del null a 0 V y tarda 0.1–0.4 s en volver. Desvío resultante:
+  +0.011 mm a 0.1 mm/min (lo que la rampa avanza en casi 7 s), +0.007 mm a 1.5 mm/min y
+  −0.032 mm a 30 mm/min. Lo mismo ocurre al soltar el PARO. Propuesta: conservar `integ` (que
+  guarda el null aprendido) en vez de ponerlo a cero.
+
 ---
 
 ## 6. Por confirmar al cablear
@@ -204,21 +251,34 @@ Sin probeta salvo R4. Alguien junto a la seta. Bomba en marcha ≥ 3 min. Guarda
 
 ---
 
-## 7. Dónde quedamos (cierre del 2026-11-12)
+## 7. Dónde quedamos (2026-11-18)
 
-- La v16 guardada a las 16:59 contiene `PID.c` v18 y `ParamPID.c` (comprobado con
-  `pruebas/comprueba_vi.ps1`). **La v18 todavía no se ha probado en la prensa.**
-- Fase 0: hechos el arnés y el comprobador de texto. **Pendiente del laboratorio:** capturas
-  R1–R5 (§5) en `results/referencia_v18/`.
-- **Siguiente paso (no depende de las capturas):** fase 1, escribir y verificar `Entradas.c`,
-  `Uph.c` y `Pid.c`; después la simulación en lazo cerrado con el modelo Simulink.
-- `pruebas/borrador_PID_v19.c`: borrador sin verificar de la v18 con las entradas `seta` y `uph`
-  (FALLA con causa 6 si la bomba se detiene en ensayo; comando seguro y seguimiento con la bomba
-  parada). Referencia para la lógica de `Pid.c`; no pegar.
+- Fase 0: hecha salvo la simulación en lazo cerrado con el modelo Simulink. La v18 está probada
+  en la prensa (§5).
+- Fase 1: los tres textos están escritos y verificados, con las dos propuestas de §8 aplicadas.
+- Fase 2: **v17 cableada el 2026-11-18** (`FluidtekPrensaCONidentLEDI_v17.vi`) y revisada tres
+  veces sin ejecutarla (textos con `pruebas/comprueba_vi.ps1`, diagrama leído por ActiveX sobre
+  una copia; última versión, la de las 16:06). Textos iguales a los archivos, flecha sin romper,
+  cableado conforme a la guía y sin correcciones pendientes (guía §6).
+- El mismo día el laboratorio retiró de la carpeta la v16, `PID.c`, `ParamPID.c` y `TIME.vi`
+  (siguen en el historial de git, commit 430d23c). `pruebas/arnes_v17.js` lee `PID.c` y
+  `ParamPID.c`: hay que recuperarlos para volver a ejecutarlo.
+- **Siguiente paso (laboratorio):** la puesta en marcha (guía §8), con alguien junto a la seta y
+  sin probeta; después repetir las capturas P1 a P4 y compararlas con `results/referencia_v18/`.
 - `docs/vi_v16_2026-11-12/` (sin versionar): diagrama completo de la v16, panel, los 16 marcos
-  ocultos, mosaicos legibles y todos los textos. Sirve de guía para recablear sin regenerarlo.
-- Lectura del lazo digital actual (para `Uph.c`): `ok` = DI0 y no Stop; reset = no `ok`, o Apagar,
-  o PARO; DO0 = enclavamiento; DO2 = no `ok`; DO5 = 1. Indicadores: «Estado de motor» = la orden
-  (no DI7), «UPH energizada» = no DI5, «Sobrecorriente» = DI5, «Nivel tanque» = DI1,
-  «Estado de filtro» = no DI2. DI7 se lee y no se cablea a nada.
+  ocultos, mosaicos legibles y todos los textos. Sirve de guía para recablear.
+- Lectura del lazo digital de la v16: `ok` = DI0 y no Stop; reset = no `ok`, o Apagar, o PARO;
+  DO0 = enclavamiento; DO2 = no `ok`; DO5 = 1. Indicadores: «Estado de motor» = la orden (no
+  DI7), «UPH energizada» = no DI5, «Sobrecorriente» = DI5, «Nivel tanque» = DI1, «Estado de
+  filtro» = no DI2. DI7 se lee y no se cablea a nada.
 
+---
+
+## 8. Propuestas aceptadas el 2026-11-13 (ya aplicadas)
+
+1. **Arranque sin salto.** En la v18, `integ = 0` al iniciar un ensayo, al cambiar el tipo de
+   control y durante el PARO hacía pasar el comando por 0 V (§5, hallazgo). En `Pid.c` el
+   integrador se conserva; como `x_ref = x`, el comando arranca en el null aprendido.
+2. **Bomba que no confirma.** Si el guardamotor dispara, en la v16 la orden de bomba sigue en 1 y
+   al rearmarlo la bomba arrancaría sola. `Uph.c` retira la orden si DI7 no confirma la marcha en
+   2 s (contador en `G[7]`) y exige pulsar Encender de nuevo.
